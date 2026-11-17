@@ -1,0 +1,25 @@
+name: shorturl
+version: "3.0.0"
+description: "URL shortening and expansion service"
+category: networking
+requires_internet: true
+
+dependencies:
+  system: [curl]
+
+input_schema:
+  arguments:
+    - name: url
+      type: string
+      required: true
+      description: "URL to shorten or expand"
+  flags:
+    - flag: "-s"
+      description: "Shorten URL (mandatory if not expanding)"
+    - flag: "-e"
+      description: "Expand URL (mandatory if not shortening)"
+
+output_schema:
+  text: "Shortened or expanded URL"
+
+tags: [networking, url, shortener, utility]

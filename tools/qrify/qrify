@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# Author: Hakxcore & Alexander Epstein
+# Description: Converts strings or URLs into a QR code, or decodes them.
+
+# Source the shared utility library
+source "${GATHM_ROOT:-$(dirname "$0")/../../..}/lib/utils.bash"
+
+currentVersion="3.0.0"
+
+makeqr()
+{
+    local input=$(echo "$1" | sed 's/ /%20/g')
+    # Using qrenco.de for terminal output
+    local output
+    output=$(httpGet "https://qrenco.de/$input")
+    # An unreachable qrenco.de made this print nothing and exit 0, which is
+    # indistinguishable from success for anything calling the tool.
+    if [[ -z "${output// }" ]]; then
+        echo "Error: no QR code returned by qrenco.de (service unreachable?)"
+        return 1
+    fi
+    printf '%s\n' "$output"
+}
+
+makeQRFile()
+{
+    local filename="$1"
+    local data=$(echo "$2" | sed 's/ /%20/g')
+    
+    [[ "$filename" != *.png ]] && filename="${filename}.png"
+    
+    echo "Generating QR code image: $filename"
+    httpGet "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=$data" > "$filename"
+    echo "Saved to $filename"
+}
+
+decodeQR()
+{
+    local file_path="$1"
+    if [[ ! -f "$file_path" ]]; then
+        echo "Error: File not found: $file_path"
+        return 1
+    fi
+
+    echo "Decoding QR code from $file_path..."
+    
+    # Use the qrserver.com API for decoding
+    local response=$(curl -s -F "file=@$file_path" https://api.qrserver.com/v1/read-qr-code/)
+    
+    if [[ -z "$response" ]]; then
+        echo "Error: Could not connect to decoding API."
+        return 1
+    fi
+
+    # Extract data using python
+    local data=$(echo "$response" | python3 -c "import sys, json; 
+try:
+    res = json.load(sys.stdin)
+    print(res[0]['symbol'][0]['data'] or 'Error: ' + res[0]['symbol'][0]['error'])
+except Exception:
+    print('Error: Could not parse response')
+" 2>/dev/null)
+
+    echo "Decoded Data: $data"
+}
+
+usage()
+{
+  cat <<EOF
+Qrify (v$currentVersion)
+Description: Converts strings or URLs into a QR code.
+
+Usage: qrify [string]
+  -f <file>   Save QR code as a PNG file
+  -d <file>   Decode a QR code from an image file
+  -h          Show the help
+  -v          Get the tool version
+
+Examples:
+  qrify "Hello Gathm"
+  qrify -f myqr.png "https://github.com"
+  qrify -d myqr.png
+EOF
+}
+
+# --- Initialize Variables ---
+FILE_OUT=""
+FILE_DEC=""
+
+# --- Option Parsing ---
+while getopts "f:d:vh" opt; do
+  case "$opt" in
+    f) FILE_OUT="$OPTARG" ;;
+    d) FILE_DEC="$OPTARG" ;;
+    v) echo "Version $currentVersion"; exit 0 ;;
+    h) usage; exit 0 ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+check_dependencies curl python3
+getConfiguredClient || exit 1
+checkInternet || { echo "Error: No internet connection"; exit 1; }
+
+# `exit 0` regardless of what the action returned meant a failed QR fetch or a
+# failed decode still reported success to callers.
+rc=0
+if [[ -n "$FILE_DEC" ]]; then
+    decodeQR "$FILE_DEC" || rc=$?
+elif [[ -n "$FILE_OUT" ]]; then
+    if [[ $# -eq 0 ]]; then
+        echo "Error: Missing data to encode."
+        exit 1
+    fi
+    makeQRFile "$FILE_OUT" "$*" || rc=$?
+elif [[ $# -gt 0 ]]; then
+    makeqr "$*" || rc=$?
+else
+    usage
+fi
+
+exit $rc

@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Author: Hakxcore https://github.com/hakxcore
+# Description: Quickly transfer files from the command line.
+
+# Source the shared utility library
+source "${GATHM_ROOT:-$(dirname "$0")/../../..}/lib/utils.bash"
+
+currentVersion="3.0.0"
+
+## This function handles the file upload
+upload_file()
+{
+    local file_path="$1"
+    if [[ ! -f "$file_path" ]]; then
+        echo "Error: Invalid file path." >&2
+        return 1
+    fi
+
+    local filename=$(basename "$file_path")
+    echo "${BLUE}Uploading $filename...${RESETBG}"
+
+    local response
+    response=$(curl --fail --silent --show-error --max-time 120 --upload-file "$file_path" "https://free.keep.sh") || { echo "Failure!"; return 1; }
+    
+    echo -e "${GREEN}Success!${RESETBG}"
+    echo -e "${BLUE}Transfer Download Command:${RESETBG} transfer -d $(echo "$response" | cut -d "/" -f 4) $filename"
+    echo -e "${BLUE}Transfer File URL:${RESETBG} $response"
+    
+    # Check if qrify exists (it's another gathm tool)
+    local qrify_tool="$(dirname "$0")/../qrify/qrify"
+    if [[ -f "$qrify_tool" ]]; then
+        echo -e "\nOr scan this QR Code:"
+        bash "$qrify_tool" "$response"
+    fi
+}
+
+## This function handles the file download
+download_file()
+{
+    local file_id="$1"
+    local filename="$2"
+    
+    if [[ -z "$file_id" || -z "$filename" ]]; then
+        echo "Error: Missing file ID or filename for download." >&2
+        usage
+        return 1
+    fi
+
+    echo "${BLUE}Downloading $filename...${RESETBG}"
+    # Downloads cannot overwrite an existing file or escape the current directory.
+    if [[ ! "$file_id" =~ ^[a-zA-Z0-9_-]+$ || "$filename" == */* || "$filename" == .* || "$filename" == -* ]]; then
+        echo "Error: Invalid download ID or filename." >&2
+        return 1
+    fi
+    local temporary
+    temporary=$(mktemp "./.gathm-download.XXXXXX") || return 1
+    if ! curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+        --max-time 120 "https://free.keep.sh/$file_id/$filename" > "$temporary"; then
+        rm -f "$temporary"
+        return 1
+    fi
+    # Hard-link creation is atomic and refuses existing files, including symlinks.
+    if ! ln "$temporary" "./$filename"; then
+        rm -f "$temporary"
+        return 1
+    fi
+    rm -f "$temporary"
+    echo -e "${GREEN}File saved as $filename${RESETBG}"
+}
+
+usage()
+{
+  cat <<EOF
+Transfer (v$currentVersion)
+
+Description: Quickly transfer files from the command line.
+
+Usage: transfer [flags] or transfer [file]
+  -d [id] [name]  Download a file by ID and name
+  -o [file]       One-time file upload
+  -h              Show the help
+  -v              Get the tool version
+
+Examples:
+  transfer myfile.txt
+  transfer -d 9ab64df49d myfile.txt
+EOF
+}
+
+# --- Option Parsing ---
+while getopts "o:d:vh" opt; do
+  case "$opt" in
+    d) download_file "$OPTARG" "$3"; exit $? ;;
+    o) upload_file "$OPTARG"; exit $? ;;
+    v) echo "Version $currentVersion"; exit 0 ;;
+    h) usage; exit 0 ;;
+  esac
+done
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 1
+fi
+
+# Driver for direct file upload
+check_dependencies curl
+getConfiguredClient || exit 1
+checkInternet || { echo "Error: no active internet connection" >&2; exit 1; }
+
+# Handle multiple files or direct upload
+if [[ "$1" == "-d" ]]; then
+    download_file "$2" "$3"
+else
+    for file in "$@"; do
+        upload_file "$file"
+    done
+fi
+
+exit 0

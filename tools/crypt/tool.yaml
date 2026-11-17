@@ -1,0 +1,28 @@
+name: crypt
+version: "3.0.0"
+description: "AES-256 file encryption and decryption using OpenSSL"
+category: security
+requires_internet: false  # openssl file encryption/decryption runs locally
+
+dependencies:
+  system: [openssl]
+
+input_schema:
+  arguments:
+    - name: flag
+      type: string
+      required: true
+      description: "Operation flag: -e for encrypt, -d for decrypt"
+    - name: inputFile
+      type: string
+      required: true
+      description: "Input file path"
+    - name: outputFile
+      type: string
+      required: true
+      description: "Output file path"
+
+output_schema:
+  text: "Encryption/decryption result"
+
+tags: [security, encryption, aes, openssl, files]

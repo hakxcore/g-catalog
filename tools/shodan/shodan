@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Author: Gathm maintainers
+# Description: Shodan CLI wrapper with dependency checks.
+
+source "${GATHM_ROOT:-$(dirname "$0")/../../..}/lib/utils.bash"
+
+currentVersion="3.0.0"
+
+usage() {
+  cat <<EOF
+Shodan (v$currentVersion)
+Description: Shodan search engine for network device scanning and research.
+
+Usage: shodan [flags] [arguments...]
+  -h  Show the help
+  -v  Get the tool version
+
+Examples:
+  shodan info
+  shodan host 8.8.8.8
+  shodan search apache country:US
+EOF
+}
+
+find_python() {
+  for cmd in python3 python; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+      echo "$cmd"
+      return 0
+    fi
+  done
+  return 1
+}
+
+while getopts "vh" opt; do
+  case "$opt" in
+    v) echo "Version $currentVersion"; exit 0 ;;
+    h) usage; exit 0 ;;
+    *) usage; exit 1 ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 1
+fi
+
+PYTHON_CMD=$(find_python) || {
+  echo "Error: python is required to run the shodan tool." >&2
+  exit 1
+}
+
+if ! "$PYTHON_CMD" -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('shodan') else 1)" >/dev/null 2>&1; then
+  echo "Error: Missing Python package 'shodan'. Install with: pip install shodan" >&2
+  exit 1
+fi
+
+exec "$PYTHON_CMD" -m shodan "$@"

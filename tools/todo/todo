@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# Author: Hakxcore https://github.com/hakxcore
+# Description: A simplistic commandline todo list.
+
+# Source the shared utility library
+source "${GATHM_ROOT:-$(dirname "$0")/../../..}/lib/utils.bash"
+
+currentVersion="3.0.0"
+TODO_DIR="${HOME}/.todo"
+TODO_FILE="${TODO_DIR}/list.txt"
+
+# --- Initialization ---
+mkdir -p "$TODO_DIR"
+touch "$TODO_FILE"
+
+# --- Add tasks in todo list ---
+addTask()
+{
+    echo "$1 ; ${BLUE}$(date)${RESETBG}" >> "$TODO_FILE"
+}
+
+# --- Remove tasks from the todo list ---
+removeTask()
+{
+    local count="0"
+    local temp_file=$(mktemp /tmp/todo.XXXXXX)
+    
+    # Validation
+    for task_num in "$@"; do
+        if [[ ! "$task_num" =~ ^[0-9]+$ ]]; then
+            echo "Error: $task_num is not a valid task number!"
+            return 1
+        fi
+    done
+
+    # Filtering
+    local i=1
+    while IFS= read -r line; do
+        local remove="false"
+        for task_num in "$@"; do
+            if [[ "$i" -eq "$task_num" ]]; then
+                remove="true"
+                break
+            fi
+        done
+        if [[ "$remove" == "false" ]]; then
+            echo "$line" >> "$temp_file"
+        fi
+        i=$((i + 1))
+    done < "$TODO_FILE"
+
+    mv "$temp_file" "$TODO_FILE"
+    echo "Task(s) removed successfully."
+}
+
+# --- Get all tasks from todo list ---
+getTasks()
+{
+    if [[ ! -s "$TODO_FILE" ]]; then
+        echo "No tasks found"
+        return 0
+    fi
+
+    local i=1
+    while IFS= read -r line; do
+        local idx=$i
+        if [[ "$i" -lt 10 ]]; then idx="0$i"; fi
+        echo "${BLUE}[${RESETBG}${idx}${BLUE}]${RESETBG} ${line}"
+        i=$((i + 1))
+    done < "$TODO_FILE" | column -t -s ";"
+}
+
+# --- Clear all tasks ---
+clearTasks()
+{
+    : > "$TODO_FILE"
+    echo "Tasks cleared."
+}
+
+usage()
+{
+  cat <<EOF
+Todo (v$currentVersion)
+
+Description: A simplistic commandline todo list.
+
+Usage: todo [command] [arguments]
+  list, -g    Get current tasks
+  add, -a     Add a task
+  remove, -r  Remove task number(s)
+  clear, -c   Clear all tasks
+  -h          Show the help
+  -v          Get the tool version
+
+Examples:
+   todo add "Buy milk"
+   todo list
+   todo remove 1
+   todo clear
+EOF
+}
+
+# --- Option Parsing ---
+while getopts "cr:a:gvh" opt; do
+  case "$opt" in
+    c) clearTasks; exit 0 ;;
+    g) getTasks; exit 0 ;;
+    r) removeTask "$@"; exit 0 ;;
+    a) addTask "${*:2}"; exit 0 ;;
+    v) echo "Version $currentVersion"; exit 0 ;;
+    h) usage; exit 0 ;;
+  esac
+done
+
+# --- Alternative Command Handling ---
+case "$1" in
+    add|-a) shift; addTask "$*"; getTasks ;;
+    remove|-r) shift; removeTask "$@"; getTasks ;;
+    list|get|-g) getTasks ;;
+    clear|-c) clearTasks ;;
+    help|-h) usage ;;
+    v|-v) echo "Version $currentVersion" ;;
+    *) if [[ -z "$1" ]]; then getTasks; else usage; fi ;;
+esac
+
+exit 0

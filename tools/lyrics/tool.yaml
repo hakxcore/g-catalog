@@ -1,0 +1,32 @@
+name: lyrics
+version: "3.0.0"
+description: "Song lyrics fetcher by artist and title"
+category: media
+requires_internet: true
+
+dependencies:
+  system: [curl, python3]
+
+input_schema:
+  arguments:
+    - name: flags
+      type: string
+      required: true
+      description: "Required flags: -a for artist, -s for song"
+    - name: artist
+      type: string
+      required: true
+      description: "Artist name"
+    - name: song
+      type: string
+      required: true
+      description: "Song title"
+  flags:
+    - flag: "-f"
+      description: "Export lyrics to file"
+      has_argument: true
+
+output_schema:
+  text: "Song lyrics"
+
+tags: [media, music, lyrics, entertainment]

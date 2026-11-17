@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Author: Hakxcore & Alexander Epstein
+# Description: Shorten URLs and expand/unmask shortened URLs.
+
+# Source the shared utility library
+source "${GATHM_ROOT:-$(dirname "$0")/../../..}/lib/utils.bash"
+
+currentVersion="3.0.0"
+
+shortenURL()
+{
+    local url="$1"
+    [[ ! "$url" =~ ^https?:// ]] && url="http://$url"
+    
+    # Using tinyurl.com API
+    local response=$(httpGet "https://tinyurl.com/api-create.php?url=$url")
+    if [[ -z "$response" || "$response" == "Error"* ]]; then
+        echo "Error: Could not shorten URL."
+        return 1
+    fi
+    echo "$response"
+}
+
+expandURL()
+{
+    local url="$1"
+    [[ ! "$url" =~ ^https?:// ]] && url="http://$url"
+    
+    # Using unshorten.me API
+    local response=$(httpGet "https://unshorten.me/s/$url")
+    if [[ -z "$response" || "$response" == "Invalid Short URL" ]]; then
+        echo "Error: Could not expand URL (invalid or 404)."
+        return 1
+    fi
+    echo "$response"
+}
+
+usage()
+{
+  cat <<EOF
+ShortURL (v$currentVersion)
+Description: Shorten URLs or expand shortened URLs.
+
+Usage: shorturl [flag] [URL]
+  -s <url>  Shorten the URL
+  -e <url>  Expand a shortened URL
+  -h        Show the help
+  -v        Get the tool version
+
+Examples:
+   shorturl -s "https://google.com"
+   shorturl -e "https://tinyurl.com/jhkj"
+EOF
+}
+
+# --- Initialize Variables ---
+ACTION=""
+URL=""
+
+# --- Option Parsing ---
+while getopts "s:e:vh" opt; do
+  case "$opt" in
+    s) ACTION="shorten"; URL="$OPTARG" ;;
+    e) ACTION="expand"; URL="$OPTARG" ;;
+    v) echo "Version $currentVersion"; exit 0 ;;
+    h) usage; exit 0 ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+if [[ -z "$ACTION" ]]; then
+    # Default to shorten if one arg provided without flag
+    if [[ $# -eq 1 ]]; then
+        ACTION="shorten"
+        URL="$1"
+    else
+        usage
+        exit 1
+    fi
+fi
+
+getConfiguredClient || exit 1
+checkInternet || { echo "Error: No internet connection"; exit 1; }
+
+if [[ "$ACTION" == "shorten" ]]; then
+    RESULT=$(shortenURL "$URL")
+    [[ $? -eq 0 ]] && echo -e "Original:  $URL\nShortened: $RESULT"
+else
+    RESULT=$(expandURL "$URL")
+    [[ $? -eq 0 ]] && echo -e "Short:    $URL\nExpanded: $RESULT"
+fi
+
+exit 0

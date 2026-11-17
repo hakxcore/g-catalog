@@ -1,0 +1,68 @@
+name: geo
+version: "3.0.0"
+description: "Provides WAN/LAN IP, router, DNS, MAC, and geolocation data"
+category: networking
+requires_internet: true
+
+dependencies:
+  system: [curl, python3]
+
+apis:
+  - name: ipify
+    base_url: https://api.ipify.org
+    health_endpoint: https://api.ipify.org
+    auth_required: false
+  - name: ipwhois
+    base_url: https://ipwho.is
+    health_endpoint: https://ipwho.is/8.8.8.8
+    auth_required: false
+  - name: ipinfo
+    base_url: https://ipinfo.io
+    health_endpoint: https://ipinfo.io
+    auth_required: false
+
+input_schema:
+  arguments: []
+  flags:
+    - flag: "-w"
+      description: "Returns WAN IP"
+    - flag: "-l"
+      description: "Returns LAN IP(s)"
+    - flag: "-r"
+      description: "Returns Router IP"
+    - flag: "-d"
+      description: "Returns DNS Nameserver(s)"
+    - flag: "-m"
+      description: "Returns MAC address for interface"
+      has_argument: true
+    - flag: "-g"
+      description: "Returns geolocation data"
+    - flag: "-a"
+      description: "Specify IP for geolocation"
+      has_argument: true
+    - flag: "-o"
+      description: "Select supported geolocation fields"
+      has_argument: true
+    - flag: "-h"
+      description: "Show help"
+    - flag: "-v"
+      description: "Show version"
+
+output_schema:
+  text: "Network and geolocation information"
+  json_fields:
+    - name: wan_ip
+      type: string
+    - name: lan_ips
+      type: array
+    - name: router_ip
+      type: string
+    - name: dns_servers
+      type: array
+    - name: mac_address
+      type: string
+    - name: geolocation
+      type: object
+
+fallback_tool: ipinfo
+tags: [networking, geo, ip, location, located, where, isp, geolocation, city, country]

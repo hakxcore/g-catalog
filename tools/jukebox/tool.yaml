@@ -1,0 +1,28 @@
+name: jukebox
+version: "3.0.0"
+description: "Interactive telehack terminal music demo via telnet. Does not control local music apps, songs, or a media library."
+category: media
+requires_internet: true
+
+dependencies:
+  system: [telnet]
+
+apis:
+  - name: telehack
+    base_url: telehack.com
+    health_endpoint: ""
+    auth_required: false
+
+input_schema:
+  arguments: []
+  flags:
+    - flag: "-h"
+      description: "Show help"
+    - flag: "-v"
+      description: "Show version"
+
+output_schema:
+  text: "Interactive music player"
+
+fallback_tool: null
+tags: [media, music, entertainment, terminal]

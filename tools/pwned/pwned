@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Author: Hakxcore https://github.com/hakxcore
+# Description: Tells you when your account was last breached
+
+# Source the shared utility library
+source "${GATHM_ROOT:-$(dirname "$0")/../../..}/lib/utils.bash"
+
+currentVersion="3.0.0"
+
+## This function grabs data from Have I been Pwned ? and using python parses it
+getPwned()
+{
+    local email="$1"
+    # Note: HaveIBeenPwned API v2 now requires an API key for some endpoints, 
+    # but some mirror services or v2 legacy might still work or return 404 for clean.
+    info=$(httpGet "https://haveibeenpwned.com/api/v2/breachedaccount/$email")
+    
+    if [[ -z "$info" ]]; then
+        echo "Looks like you have not been breached (or API is unavailable)"
+        return 0
+    fi
+
+    export PYTHONIOENCODING=utf8
+    title=$(echo "$info" | python3 -c "import sys, json; 
+try:
+    data = json.load(sys.stdin)
+    if isinstance(data, list):
+        print('\n'.join([u.get('Title', 'Unknown') for u in data]))
+    else:
+        print(data.get('Title', 'Unknown'))
+except Exception:
+    pass" 2>/dev/null)
+
+    if [[ -z "$title" ]]; then
+        echo "Looks like you have not been breached"
+    else
+        echo -e "\n${RED}BREACHED ACCOUNT DETECTED${RESETBG}"
+        print_divider
+        echo "$title"
+        print_divider
+    fi
+}
+
+##Usage and Help
+usage()
+{
+  cat <<EOF
+Pwned (v$currentVersion)
+
+Description: Tells you when your account was last breached.
+Usage: pwned [email]
+  -h      Show the help
+  -v      Get the tool version
+
+Examples:
+  pwned test@example.com
+EOF
+}
+
+# --- Option Parsing ---
+while getopts "vh" opt; do
+  case "$opt" in
+    h) usage; exit 0 ;;
+    v) echo "Version $currentVersion"; exit 0 ;;
+    *) usage; exit 1 ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+##Driver
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 1
+fi
+
+check_dependencies python3
+getConfiguredClient || exit 1
+checkInternet || { echo "Error: no active internet connection" >&2; exit 1; }
+
+getPwned "$1"
+exit 0

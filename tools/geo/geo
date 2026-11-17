@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# Author: Hakxcore & Jake Meyer
+# Description: Provides WAN/LAN IP, router, DNS, MAC, and geolocation data.
+
+# Source the shared utility library
+source "${GATHM_ROOT:-$(dirname "$0")/../../..}/lib/utils.bash"
+
+currentVersion="3.0.0"
+
+# --- Usage and Help ---
+usage()
+{
+cat <<EOF
+Geo (v$currentVersion)
+
+Description: Provides quick access for WAN, LAN, router, DNS, MAC, and IP geolocation data.
+
+Usage: geo [flags]
+  -w            Returns WAN IP.
+  -l            Returns LAN IP(s).
+  -r            Returns Router IP.
+  -d            Returns DNS Nameserver(s).
+  -m <iface>    Returns MAC address for a specific interface (e.g., eth0).
+  -g            Returns your current IP's geolocation data.
+  -a <ip>       Specify an IP address for geolocation lookup.
+  -o <fields>   Specify fields for geo lookup (e.g., city,country,isp).
+                Combine with -a, or -g is implied.
+                Supported: query,city,region,regionName,country,countryCode,zip,
+                isp,org,as,continent,continentCode,lat,lon,timezone,status.
+  
+  -h            Show this help message.
+  -v            Get the tool version.
+
+Examples:
+  geo -wlr        # Show WAN, LAN, and Router IP
+  geo -m eth0     # Show MAC address for eth0
+  geo -g          # Get your geolocation
+  geo -a 8.8.8.8 -o city,isp
+EOF
+}
+
+# --- Network Information Functions ---
+wan_search() { echo "WAN IP: $(httpGet https://api.ipify.org)"; }
+
+lan_search() {
+    echo "LAN IP(s):"
+    if [[ "$distro" == "darwin" ]]; then
+        ifconfig | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}'
+    else # Assumes Linux/Termux
+        ip -4 addr show | grep 'inet' | grep -v '127.0.0.1' | awk '{print $2}' | cut -d'/' -f1
+    fi
+}
+
+router_search() {
+    echo "Router IP:"
+    if [[ "$distro" == "darwin" ]]; then
+        netstat -rn | grep default | head -1 | awk '{print$2}'
+    else # Assumes Linux/Termux
+        ip route | grep '^default' | head -1 | awk '{print$3}'
+    fi
+}
+
+dns_search() {
+    echo "DNS Server(s):"
+    grep -i '^nameserver' /etc/resolv.conf | awk '{print $2}'
+}
+
+mac_search() {
+    echo "MAC Address ($1):"
+    if [[ "$distro" == "darwin" ]]; then
+        ifconfig "$1" | grep 'ether' | awk '{print $2}'
+    else # Assumes Linux/Termux
+        ip addr show "$1" | grep 'link/ether' | awk '{print $2}'
+    fi
+}
+
+geodata_search() {
+    local target_ip="${1:-}" # Use provided IP or let API use current IP
+    local fields="${2:-query,city,region,country,zip,isp}"
+    check_dependencies python3
+    python3 -c 'import ipaddress,sys; ipaddress.ip_address(sys.argv[1]) if sys.argv[1] else None' "$target_ip" \
+        2>/dev/null || { echo 'Error: specify an IPv4 or IPv6 address.' >&2; return 1; }
+    echo "Geolocation Data (for ${target_ip:-your IP}):"
+    local response
+    response=$(httpGet "https://ipwho.is/${target_ip}") || return 1
+    printf '%s' "$response" | GATHM_GEO_FIELDS="$fields" python3 -c '
+import json, os, sys
+try:
+    data = json.load(sys.stdin)
+    if not isinstance(data, dict) or data.get("success") is not True:
+        raise ValueError("geolocation lookup failed")
+    connection = data.get("connection") or {}
+    timezone = data.get("timezone") or {}
+    values = {"query": data.get("ip"), "city": data.get("city"),
+              "region": data.get("region_code"), "regionName": data.get("region"),
+              "country": data.get("country"), "countryCode": data.get("country_code"),
+              "zip": data.get("postal"), "isp": connection.get("isp"),
+              "org": connection.get("org"), "as": connection.get("asn"),
+              "continent": data.get("continent"), "continentCode": data.get("continent_code"),
+              "lat": data.get("latitude"), "lon": data.get("longitude"),
+              "timezone": timezone.get("id"), "status": "success"}
+    fields = os.environ["GATHM_GEO_FIELDS"].split(",")
+    if len(fields) > 32 or any(field not in values for field in fields):
+        raise ValueError("unsupported geolocation field; see geo --help")
+    for field in fields:
+        print("" if values[field] is None else str(values[field]))
+except (ValueError, AttributeError, TypeError) as exc:
+    print("Error: " + str(exc), file=sys.stderr)
+    raise SystemExit(1)
+'
+}
+
+# --- Initialize Variables ---
+distro=$(detect_platform)
+ACTION_WAN=0
+ACTION_LAN=0
+ACTION_ROUTER=0
+ACTION_DNS=0
+ACTION_MAC=0
+ACTION_GEO=0
+ADDRESS=""
+OPTIONS=""
+MAC_IFACE=""
+ACTION_COUNT=0
+
+# --- Option Parsing ---
+while getopts "wlrdgm:a:o:vh" opt; do
+  case "$opt" in
+    w) ACTION_WAN=1; ((ACTION_COUNT++)) ;;
+    l) ACTION_LAN=1; ((ACTION_COUNT++)) ;;
+    r) ACTION_ROUTER=1; ((ACTION_COUNT++)) ;;
+    d) ACTION_DNS=1; ((ACTION_COUNT++)) ;;
+    m) ACTION_MAC=1; MAC_IFACE="$OPTARG"; ((ACTION_COUNT++)) ;;
+    g) ACTION_GEO=1; ((ACTION_COUNT++)) ;;
+    a) ADDRESS="$OPTARG" ;;
+    o) OPTIONS="$OPTARG" ;;
+    v) echo "Version $currentVersion"; exit 0 ;;
+    h) usage; exit 0 ;;
+    \?) usage; exit 1 ;;
+  esac
+done
+
+# --- Main Driver ---
+
+# Show usage if no flags are provided
+if [[ $ACTION_COUNT -eq 0 && -z "$ADDRESS" && -z "$OPTIONS" ]]; then
+    usage
+    exit 0
+fi
+
+# Configure HTTP client if any network actions are requested
+if [[ $ACTION_WAN -eq 1 || $ACTION_GEO -eq 1 || -n "$ADDRESS" || -n "$OPTIONS" ]]; then
+    getConfiguredClient || exit 1
+    checkInternet || { echo "${RED}Error: No active internet connection.${RESETBG}"; exit 1; }
+fi
+
+# Execute actions based on flags
+if [[ $ACTION_WAN -eq 1 ]]; then wan_search; fi
+if [[ $ACTION_LAN -eq 1 ]]; then lan_search; fi
+if [[ $ACTION_ROUTER -eq 1 ]]; then router_search; fi
+if [[ $ACTION_DNS -eq 1 ]]; then dns_search; fi
+if [[ $ACTION_MAC -eq 1 ]]; then mac_search "$MAC_IFACE"; fi
+
+# Geolocation logic
+if [[ $ACTION_GEO -eq 1 || -n "$ADDRESS" || -n "$OPTIONS" ]]; then
+    geodata_search "$ADDRESS" "$OPTIONS" || exit 1
+fi
+
+exit 0

@@ -1,0 +1,24 @@
+name: newton
+version: "3.0.0"
+description: "Advanced numerical and symbolic MATH engine. Use this for: simplify, factor, derive (calculus), integrate, cos, sin, tan, log, etc. For example: 'newton derive x^2' or 'newton simplify 2x+2x'."
+category: science
+requires_internet: true
+
+dependencies:
+  system: [curl, python3]
+
+input_schema:
+  arguments:
+    - name: operation
+      type: string
+      required: true
+      description: "Math operation (simplify, factor, derive, integrate, zeroes, tangent, area, cos, sin, tan, abs, log)"
+    - name: expression
+      type: string
+      required: true
+      description: "Mathematical expression. Use [ ] instead of ( )"
+
+output_schema:
+  text: "Result of the mathematical operation"
+
+tags: [math, science, calculus, logic, calculation]

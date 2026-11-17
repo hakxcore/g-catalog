@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Author: Hakxcore & Alexander Epstein
+# Description: Fetch lyrics for a certain song.
+
+# Source the shared utility library
+source "${GATHM_ROOT:-$(dirname "$0")/../../..}/lib/utils.bash"
+
+currentVersion="3.0.0"
+
+getLyrics()
+{
+    local artist=$(echo "$1" | sed 's/ /%20/g; s/&/%26/g; s/,/%2C/g; s/-/%2D/g')
+    local song=$(echo "$2" | sed 's/ /%20/g; s/&/%26/g; s/,/%2C/g; s/-/%2D/g')
+    
+    # Using the lyrics.ovh API
+    local response=$(httpGet "https://api.lyrics.ovh/v1/$artist/$song")
+    
+    if [[ -z "$response" ]]; then
+        echo "Error: Could not connect to lyrics API."
+        return 1
+    fi
+
+    # Extract lyrics using python
+    local lyrics=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('lyrics', ''))" 2>/dev/null)
+    
+    if [[ -z "$lyrics" ]]; then
+        echo "Error: No lyrics found for '$2' by '$1'."
+        return 1
+    fi
+    
+    echo -e "$lyrics"
+}
+
+usage()
+{
+  cat <<EOF
+Lyrics (v$currentVersion)
+Description: Fetch lyrics for a certain song.
+
+Usage: lyrics -a [artist] -s [song]
+  -a  Artist of the song
+  -s  Song name
+  -f  [file] Export to file instead of stdout
+  -h  Show the help
+  -v  Get the tool version
+
+Examples:
+   lyrics -a "Logic" -s "Run It"
+   lyrics -a "Beatles" -s "Yesterday" -f yesterday.txt
+EOF
+}
+
+# --- Initialize Variables ---
+ARTIST=""
+SONG=""
+FILE_PATH=""
+
+# --- Option Parsing ---
+while getopts "a:s:f:vh" opt; do
+  case "$opt" in
+    a) ARTIST="$OPTARG" ;;
+    s) SONG="$OPTARG" ;;
+    f) FILE_PATH="$OPTARG" ;;
+    v) echo "Version $currentVersion"; exit 0 ;;
+    h) usage; exit 0 ;;
+  esac
+done
+
+if [[ -z "$ARTIST" || -z "$SONG" ]]; then
+    usage
+    exit 1
+fi
+
+check_dependencies python3
+getConfiguredClient || exit 1
+checkInternet || { echo "Error: No internet connection"; exit 1; }
+
+LYRICS_TEXT=$(getLyrics "$ARTIST" "$SONG")
+[[ $? -ne 0 ]] && exit 1
+
+if [[ -n "$FILE_PATH" ]]; then
+    if [[ -f "$FILE_PATH" ]] && is_interactive; then
+        read -p "File '$FILE_PATH' already exists. Overwrite? [y/N]: " answer
+        [[ "$answer" != [Yy] ]] && exit 0
+    fi
+    echo -e "$LYRICS_TEXT" > "$FILE_PATH"
+    echo "Lyrics saved to $FILE_PATH"
+else
+    echo -e "$LYRICS_TEXT"
+fi
+
+exit 0

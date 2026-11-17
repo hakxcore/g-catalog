@@ -1,0 +1,27 @@
+name: qrify
+version: "3.0.0"
+description: "QR code generation and decoding"
+category: utility
+requires_internet: true
+
+dependencies:
+  system: [curl, python3]
+
+input_schema:
+  arguments:
+    - name: text
+      type: string
+      required: false
+      description: "Text or URL to encode as QR code"
+  flags:
+    - flag: "-f"
+      description: "Save QR code as a PNG file"
+      has_argument: true
+    - flag: "-d"
+      description: "Decode a QR code image file"
+      has_argument: true
+
+output_schema:
+  text: "QR code ASCII art or decoded content"
+
+tags: [security, qrcode, encoding, utility]
